@@ -1,0 +1,244 @@
+# =============================================================================
+# skill_prompts.yaml  –  All agent prompt templates and tool schemas
+#                        for Skill Memory Training
+#
+# Prompts use __varname__ placeholders (str.replace, NOT .format).
+# Tool schemas are loaded by:
+#   skill_prompt_builder.get_selection_tools(top_k)
+#   skill_prompt_builder.get_summary_tools(max_skills)
+#
+# Prompt placeholders:
+#   selection_system : __top_k_select__
+#   selection_user   : __top_k_select__  __task_description__  __file_tree__
+#   summary_system   : __max_skills__
+#   summary_user     : __task_messages_formatted__  __injected_skill_content__
+#                      __turn1_speedup__  __turn1_code__
+#                      __best_turn_speedup__  __best_turn_code__  __max_skills__
+#   skill_injection_header : (no placeholders)
+#   skill_injection_footer : (no placeholders)
+# =============================================================================
+
+prompts:
+
+  # ── Selection Agent ─────────────────────────────────────────────────────────
+  # Aligned with selected_skill_data.py SYSTEM_PROMPT.
+  # Single-turn: call select_skills once.
+  selection_system: |
+    You are an expert CUDA/Triton kernel optimization engineer.
+
+    You will be shown:
+    1. A kernel optimization task (original PyTorch code + performance target).
+    2. A numbered list of candidate optimization skills from the skill library.
+       Each entry shows only the skill name, description, tags, and scope —
+       NOT the full content.
+
+    Your job: identify the top __top_k_select__ skills most likely to help solve THIS specific task.
+
+    ## Selection criteria
+    - Relevance: the technique directly applies to the operator/pattern in the task.
+    - Impact: likely to produce a meaningful speedup for this workload.
+    - Complementarity: prefer a diverse set that covers different aspects
+      (e.g. one memory, one compute, one correctness pitfall).
+
+    ## What to avoid
+    - Selecting skills just because they sound impressive.
+    - Selecting skills about bypassing CUDA/Triton (e.g. "use torch.compile").
+    - Selecting more than __top_k_select__ skills.
+
+    When calling select_skills, first fill in `think`: briefly explain what the
+    key bottleneck of this task is and why the chosen skills address it.
+    Then fill in `selected_skills` with the names and one-sentence reasons.
+
+    You will be called multiple times — each call should make an independent
+    selection to explore different strategies.
+
+    Call select_skills exactly once. Respond in English only.
+
+  selection_user: |
+    ## Task
+
+    __task_description__
+
+    ---
+
+    ## Candidate Skills (from the library)
+
+    __file_tree__
+
+    ---
+
+    Now call select_skills to choose the top __top_k_select__ most relevant skills for this task.
+
+  # ── Summary Agent ───────────────────────────────────────────────────────────
+  # Aligned with run_skill_inference.py SYSTEM_PROMPT.
+  # Single-turn: call update_skill_library exactly once.
+  # No read_skill_files, no ReAct loop.
+  summary_system: |
+    You are an expert CUDA/Triton kernel optimization engineer.
+    You have observed a successful multi-turn kernel optimization trajectory where
+    a model iteratively improved a custom GPU kernel.
+
+    Your task: extract at most __max_skills__ GENERAL, REUSABLE optimization skills
+    from this trajectory.
+
+    ## What makes a GOOD skill
+
+    - Broadly applicable: the technique works across many operators/models, not just this one task.
+    - Actionable: explains *how* to apply the technique, not just *that* it helps.
+    - Non-obvious: not trivially covered by basic CUDA/Triton documentation.
+    - Each skill body must contain these three sections:
+        ## Motivation   — why this technique matters and when to use it
+        ## Key Idea     — the core mechanism and how to implement it
+        ## Example      — a short self-contained code snippet illustrating the idea
+
+    ## What to AVOID (your output will be rejected if any skill does this)
+
+    - Skills that bypass CUDA/Triton entirely (e.g. "use torch.compile", "call cuBLAS directly",
+      "avoid writing kernels", "fall back to PyTorch operators"). All skills MUST be about writing
+      or structuring actual kernels. And such kernels are correctly implemented.
+    - Task-specific hacks (e.g. "for this exact shape, hard-code block size 256").
+    - Observations masquerading as skills (e.g. "the model improved by fusing ops" with no guidance).
+    - Trivial or obvious advice (e.g. "use shared memory", "reduce memory bandwidth").
+    - Skills that encourage the optimizer to skip computation or reduce precision without
+      explicit justification (e.g. "drop the softmax", "use fp8 blindly").
+    - Duplicate skills: if two techniques are essentially the same, merge them.
+
+    ## Common pitfalls to document (in addition to improvements)
+
+    When extracting skills, also consider:
+    - Numerical correctness traps: reduction order, fp16/bf16 overflow, non-associativity.
+    - Race conditions: missing __syncthreads(), warp divergence from early exits.
+    - Indexing bugs that appear only at non-power-of-two sizes.
+    - Performance cliffs: bank conflicts, uncoalesced access patterns, occupancy limits.
+    - Triton-specific pitfalls: incorrect tl.constexpr usage, wrong mask shapes, autotune overhead.
+
+    When calling update_skill_library, first fill in the `think` field: briefly identify the key
+    problem or bottleneck this trajectory reveals, and what kind of skill would address it. Then
+    fill in `new_skills` with at most __max_skills__ skills derived from that analysis.
+
+    Call update_skill_library exactly once. Respond in English only.
+
+  summary_user: |
+    ## Task
+
+    __task_messages_formatted__
+
+    ## Skills Already Given to the Policy Agent
+
+    __injected_skill_content__
+
+    ## Turn 1 Result (speedup: __turn1_speedup__x)
+
+    ```python
+    __turn1_code__
+    ```
+
+    ## Best Turn Result (speedup: __best_turn_speedup__x)
+
+    ```python
+    __best_turn_code__
+    ```
+
+    Now call update_skill_library with at most __max_skills__ new, general, reusable skills
+    extracted from the trajectory above. Focus on techniques that would help achieve
+    similar improvements on OTHER tasks, not just this one.
+
+  # ── Skill injection block (appended to system prompt or first user message) ─
+  skill_injection_header: "\n\n---\n## [Skill Library] Potentially Relevant Optimization Techniques\n\nThe following techniques are retrieved from the skill library and may be relevant to this task. They are provided as optional references — apply them only if they fit the problem:\n\n"
+  skill_injection_footer: "\n\n---"
+
+
+# =============================================================================
+# Tool schemas — loaded and patched at runtime by skill_prompt_builder.
+# =============================================================================
+
+tools:
+
+  # ── select_skills (Selection Agent) ─────────────────────────────────────────
+  # Aligned with selected_skill_data.py make_tools().
+  # selected_skills uses [{name, reason}] — name resolved to rel_path in RL.
+  selection:
+    - type: function
+      function:
+        name: select_skills
+        description: >-
+          Select the most relevant skills from the candidate list for this task.
+          Call exactly once.
+        parameters:
+          type: object
+          required: [think, selected_skills]
+          properties:
+            think:
+              type: string
+              description: >-
+                Your analysis before selecting: what is the key bottleneck
+                or challenge in this task? Which techniques are most directly
+                applicable and why?
+            selected_skills:
+              type: array
+              description: Ordered list of selected skills.
+              # maxItems patched at runtime to top_k_select
+              items:
+                type: object
+                required: [name, reason]
+                properties:
+                  name:
+                    type: string
+                    description: Exact snake_case skill name from the candidate list.
+                  reason:
+                    type: string
+                    description: "One sentence: why this skill applies to this task."
+
+  # ── update_skill_library (Summary Agent) ────────────────────────────────────
+  # Aligned with run_skill_inference.py TOOLS.
+  # Single-turn: model calls this once.  No read_skill_files.
+  summary:
+    - type: function
+      function:
+        name: update_skill_library
+        description: >-
+          Propose new skills to add to the skill library.
+          Call this exactly once.
+        parameters:
+          type: object
+          required: [think, new_skills]
+          properties:
+            think:
+              type: string
+              description: >-
+                Your analysis before writing skills:
+                what is the key problem or bottleneck revealed by this trajectory?
+                What technique turned things around?
+                What pitfall caused early failures?
+                Use this to justify the skills you are about to propose.
+            new_skills:
+              type: array
+              description: List of new skills to add.
+              # maxItems patched at runtime to max_new_skills_per_step
+              items:
+                type: object
+                required: [name, description, scope, tags, content]
+                properties:
+                  name:
+                    type: string
+                    description: "Short snake_case identifier, e.g. 'vectorized_load_store'"
+                  description:
+                    type: string
+                    description: One-line description for the selection agent (<=120 chars).
+                  scope:
+                    type: string
+                    description: >-
+                      'general' for broadly applicable skills,
+                      or 'task_specific/<type>' for narrow ones
+                      (e.g. 'task_specific/matmul').
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                    description: 3-6 keyword tags (snake_case).
+                  content:
+                    type: string
+                    description: >-
+                      Full skill body in Markdown.
+                      Must contain ## Motivation, ## Key Idea, ## Example sections.
+                      Keep to <=512 tokens.

@@ -1,0 +1,139 @@
+# =============================================================================
+# skill_memory.yaml  –  Long-term Skill Memory for KernelGYM Training
+#
+# To activate, merge this file into your run config and set skill.enable=true.
+# Also ensure multi_iteration is enabled (SkillAwareMultiIterAsyncvLLMEngine
+# inherits from MultiIterAsyncvLLMEngine):
+#
+#   actor_rollout_ref:
+#     rollout:
+#       multi_turn:
+#         enable: true
+#         multi_iteration:
+#           enable: true          ← required for SkillAwareMultiIterAsyncvLLMEngine
+#
+# Engine selection in async_server.py:
+#   skill.enable=false → MultiIterAsyncvLLMEngine  (unchanged)
+#   skill.enable=true  → SkillAwareMultiIterAsyncvLLMEngine  (auto-upgrade)
+#
+# All new parameters live under the `skill` namespace.
+# Existing parameters (algorithm, actor_rollout_ref, trainer, etc.) are UNCHANGED.
+# =============================================================================
+
+skill:
+  # ---------------------------------------------------------------------------
+  # Master switch
+  # ---------------------------------------------------------------------------
+  enable: false   # Set to true to activate skill memory training
+
+  # ---------------------------------------------------------------------------
+  # Skill library storage
+  # ---------------------------------------------------------------------------
+  # library_root is typically set to ${HDFS_CHECKPOINT_PATH}/skill_library/
+  # in the training script so it lives alongside model checkpoints.
+  # Model checkpoint frequency (trainer.save_freq) and skill flush frequency
+  # (skill.save_freq) are independent — their step numbers do NOT need to align.
+  library_root: "skill_library/"         # Root directory for all skill JSONL snapshots
+  global_step_prefix: "global_step_"    # Snapshot filename prefix
+  save_freq: 1                          # Flush skill library every N training steps
+                                        # (independent of trainer.save_freq)
+
+  # ---------------------------------------------------------------------------
+  # Selection Agent hyperparameters
+  # ---------------------------------------------------------------------------
+  k: 3                          # Number of distinct skill-selection schemes per task
+  top_bm25: 20                  # BM25 recall: how many candidate skills are shown to the
+                                #   selection agent (retrieved by BM25 from the full library)
+  top_k_select: 3               # How many skills the LLM picks from the BM25 candidates
+  selection_max_skills_shown: 50  # Fallback cap when BM25 returns nothing (random sample)
+  selection_temperature: 0.8    # Sampling temperature for selection agent
+  selection_max_tokens: 1024    # Max new tokens for selection response
+
+  # ---------------------------------------------------------------------------
+  # BM25-direct mode (skip LLM selection entirely)
+  # ---------------------------------------------------------------------------
+  # When true:
+  #   - No LLM selection inference runs; BM25 top_k_select skills are injected directly.
+  #   - No null scheme. All (k+1) copies of each prompt receive the same BM25-retrieved
+  #     skills, giving n*(k+1) rollouts per task in one unified advantage group.
+  #   - selection_weight has no effect (no selection trajectories are produced).
+  #   - ROLLOUT_N stays the same; the (k+1) copies handle the capacity expansion.
+  use_bm25_direct: false
+
+  # ---------------------------------------------------------------------------
+  # Policy rollout expansion
+  # ---------------------------------------------------------------------------
+  # Standard mode:  total rollouts per task = n_per_scheme * (k + 1)
+  #   where +1 is the null-scheme (original prompt without skills).
+  # BM25-direct mode: total rollouts per task = n * (k + 1)  (all one group, same skill).
+  # n_per_scheme corresponds to actor_rollout_ref.rollout.n
+  # (this is not a separate hyperparameter; the same n is reused).
+
+  # ---------------------------------------------------------------------------
+  # Summary trigger thresholds
+  # ---------------------------------------------------------------------------
+  speedup_improve_thresh: 1.1     # Best turn must be >= turn1 * this to trigger summary
+  speedup_vs_baseline_thresh: 1.1 # Best turn must be >= baseline * this to trigger summary
+
+  # ---------------------------------------------------------------------------
+  # Summary Agent (single-turn, aligned with run_skill_inference.py)
+  # One inference: model calls update_skill_library(think, new_skills) exactly once.
+  # No ReAct, no read_skill_files.
+  # ---------------------------------------------------------------------------
+  summary_parallel_s: 2           # Parallel summary inferences per triggered task
+  summary_temperature: 0.9        # Sampling temperature for summary agent
+  summary_max_tokens: 2048        # Max new tokens for summary response
+
+  # ---------------------------------------------------------------------------
+  # Skill content limits
+  # ---------------------------------------------------------------------------
+  max_new_skills_per_step: 2      # Max new skills the summary agent may propose
+  max_skill_tokens: 512           # Soft token limit for skill body content (enforced by agent)
+
+  # ---------------------------------------------------------------------------
+  # Verification
+  # ---------------------------------------------------------------------------
+  skill_verify_speedup_thresh: 1.08  # Accept new skill if verify_speedup >= turn1_speedup * this
+  verify_min_absolute_speedup: 1.1   # Accept new skill only if verify_speedup >= this (absolute lower bound)
+  summary_require_turn1_correct: true # Only trigger summary when turn1 was correct (turn1_speedup > 0)
+
+  # ---------------------------------------------------------------------------
+  # Advantage computation
+  # ---------------------------------------------------------------------------
+  adv_cross_scheme: false      # Normalize policy advantages across schemes for same task
+  selection_weight: 0.3        # Loss weight for selection agent trajectories
+  summary_weight: 0.5          # Loss weight for summary agent trajectories
+
+  # Selection reward: within-trajectory turn aggregation
+  # "max" (default): best turn reward; "mean": average; "first": turn-1 only
+  selection_turn_reward_mode: "max"
+
+  # Selection reward aggregation across rollouts
+  # "mean" (default): mean of pooled rewards; "max": max of pooled rewards
+  selection_reward_aggregation: "mean"
+
+  # ---------------------------------------------------------------------------
+  # Training participation switches
+  # Advantage computation always uses all three types (for correct LOO grouping).
+  # These switches only remove rows from the batch right before update_actor().
+  # ---------------------------------------------------------------------------
+  train_selection: true   # false = selection agent runs but its loss is not backpropagated
+  train_summary: true     # false = summary agent runs but its loss is not backpropagated
+
+  # ---------------------------------------------------------------------------
+  # Async concurrency
+  # ---------------------------------------------------------------------------
+  async_thread_pool_size: 256  # asyncio thread pool size (for reward_fn executor calls)
+
+  # ---------------------------------------------------------------------------
+  # Agent prompts
+  # All prompt text lives in skill_prompts.yaml (same config/ directory).
+  # Override individual prompts at runtime via skill.prompts.<key>.
+  # Placeholders use __varname__ style (str.replace, NOT str.format).
+  #
+  # Available keys:
+  #   selection_system, selection_user
+  #   summary_system, summary_user
+  #   skill_injection_header, skill_injection_footer
+  # ---------------------------------------------------------------------------
+  prompts: {}   # empty = use defaults from skill_prompts.yaml

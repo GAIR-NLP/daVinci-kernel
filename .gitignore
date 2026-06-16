@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.env
+venv/
+env/
+.venv/
+
+# Data files (use HuggingFace instead)
+*.parquet
+*.jsonl
+data/
+
+# Model weights
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# Training outputs
+outputs/
+runs/
+wandb/
+*.log
+
+# Checkpoints (except skill library snapshots if desired)
+global_step_*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# KernelGYM runtime
+.env
+*.pid
