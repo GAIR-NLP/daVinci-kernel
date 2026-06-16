@@ -225,13 +225,13 @@ See [davinci-kernel/README.md](davinci-kernel/README.md) for complete training d
 cd davinci-kernel/kernel/scripts/eval
 
 # Evaluate daVinci-kernel-14B (3 turns)
-bash drkernel-14b-maxturns3-skill.sh
+bash daVinci-kernel-14b-maxturns3-skill.sh
 
 # Evaluate with sequential test-time scaling (5 turns × 10 iterations)
-bash drkernel-14b-maxturns5-maxiter10-skill.sh
+bash daVinci-kernel-14b-maxturns5-maxiter10-skill.sh
 
 # Evaluate Dr.Kernel baseline (no skill)
-bash drkernel-14b-maxturns3.sh
+bash daVinci-kernel-14b-maxturns3.sh
 
 # Evaluate with OpenAI-compatible APIs (e.g., Claude, GPT)
 bash claude-4.5-sonnet-level2.sh
