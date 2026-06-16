@@ -282,7 +282,6 @@ REDIS_HOST=<main_node_ip>
 REDIS_PORT=6379
 API_HOST=<main_node_ip>
 API_PORT=10907
-NODE_ID=worker-node-1
 GPU_DEVICES=[0,1,2,3,4,5,6,7]
 EOF
 ```
