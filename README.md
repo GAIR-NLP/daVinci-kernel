@@ -2,7 +2,7 @@
 
 [![Paper](https://img.shields.io/badge/arXiv-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2606.16497)
 [![Dataset](https://img.shields.io/badge/🤗%20Dataset-yellow)](https://huggingface.co/datasets/GAIR/daVinci-kernel-sft/tree/main)
-[![Models](https://img.shields.io/badge/🤗%20Models-yellow)](https://huggingface.co/GAIR-NLP/daVinci-kernel-14B-RL)
+[![Models](https://img.shields.io/badge/🤗%20Models-yellow)](https://huggingface.co/SII-GAIR-NLP/daVinci-kernel-14B-RL)
 
 **daVinci-kernel** is a reinforcement learning framework for GPU kernel optimization that couples skill discovery with skill exploitation through a dynamically evolving skill library. daVinci-kernel jointly trains three agents sharing one LLM backbone: a **Skill Selection Agent** that retrieves relevant techniques via BM25 and LLM reranking, a **Policy Agent** that generates multi-turn CUDA/Triton kernels conditioned on selected skills, and a **Skill Summary Agent** that distills successful rollouts into reusable skills. Candidate skills are added only after execution-based verification confirms reproducible speedups.
 
@@ -246,10 +246,10 @@ We release four checkpoints — the SFT cold-start and final RL models at both 8
 
 | Model | HuggingFace | Description |
 |-------|-------------|-------------|
-| `GAIR-NLP/daVinci-kernel-14B-RL`  | [link](https://huggingface.co/GAIR-NLP/daVinci-kernel-14B-RL)  | daVinci-kernel-14B final RL model (Qwen3-14B-Base) |
-| `GAIR-NLP/daVinci-kernel-14B-SFT` | [link](https://huggingface.co/GAIR-NLP/daVinci-kernel-14B-SFT) | daVinci-kernel-14B SFT cold-start model (Qwen3-14B-Base) |
-| `GAIR-NLP/daVinci-kernel-8B-RL`   | [link](https://huggingface.co/GAIR-NLP/daVinci-kernel-8B-RL)   | daVinci-kernel-8B final RL model (Qwen3-8B-Base) |
-| `GAIR-NLP/daVinci-kernel-8B-SFT`  | [link](https://huggingface.co/GAIR-NLP/daVinci-kernel-8B-SFT)  | daVinci-kernel-8B SFT cold-start model (Qwen3-8B-Base) |
+| `SII-GAIR-NLP/daVinci-kernel-14B-RL`  | [link](https://huggingface.co/SII-GAIR-NLP/daVinci-kernel-14B-RL)  | daVinci-kernel-14B final RL model (Qwen3-14B-Base) |
+| `SII-GAIR-NLP/daVinci-kernel-14B-SFT` | [link](https://huggingface.co/SII-GAIR-NLP/daVinci-kernel-14B-SFT) | daVinci-kernel-14B SFT cold-start model (Qwen3-14B-Base) |
+| `SII-GAIR-NLP/daVinci-kernel-8B-RL`   | [link](https://huggingface.co/SII-GAIR-NLP/daVinci-kernel-8B-RL)   | daVinci-kernel-8B final RL model (Qwen3-8B-Base) |
+| `SII-GAIR-NLP/daVinci-kernel-8B-SFT`  | [link](https://huggingface.co/SII-GAIR-NLP/daVinci-kernel-8B-SFT)  | daVinci-kernel-8B SFT cold-start model (Qwen3-8B-Base) |
 
 The RL checkpoints (`*-RL`) ship with the co-evolved skill library bundled as `skill_library.jsonl` inside the model directory. If you use our RL models for evaluation, remember to load this skill library from the checkpoint.
 
